@@ -197,9 +197,16 @@ export function registerComputer(server: McpServer): void {
 					Math.round(coordinate[1] * scale),
 				];
 
+				// Debug logging
+				console.error(`[DEBUG] Action: ${action}`);
+				console.error(`[DEBUG] Original coordinate: [${coordinate[0]}, ${coordinate[1]}]`);
+				console.error(`[DEBUG] Scale factor: ${scale}`);
+				console.error(`[DEBUG] Scaled coordinate: [${scaledCoordinate[0]}, ${scaledCoordinate[1]}]`);
+
 				// Validate coordinates are within display bounds
 				const [x, y] = scaledCoordinate;
 				const [width, height] = [await screen.width(), await screen.height()];
+				console.error(`[DEBUG] Screen size: ${width}x${height}`);
 				if (x < 0 || x >= width || y < 0 || y >= height) {
 					throw new Error(`Coordinates (${x}, ${y}) are outside display bounds of ${width}x${height}`);
 				}
@@ -357,13 +364,19 @@ export function registerComputer(server: McpServer): void {
 					// Capture the entire screen (may be at Retina resolution)
 					const image = await grabScreen();
 
+					console.error(`[DEBUG] Screenshot captured`);
+					console.error(`[DEBUG] Original image size: ${image.getWidth()}x${image.getHeight()}`);
+					console.error(`[DEBUG] Cursor position (logical): [${cursorPos.x}, ${cursorPos.y}]`);
+
 					// Then resize to fit within API limits
 					const apiScaleFactor = getSizeToApiScale(image.getWidth(), image.getHeight());
+					console.error(`[DEBUG] API scale factor: ${apiScaleFactor}`);
 					if (apiScaleFactor < 1) {
 						image.resize(
 							Math.floor(image.getWidth() * apiScaleFactor),
 							Math.floor(image.getHeight() * apiScaleFactor),
 						);
+						console.error(`[DEBUG] Resized image to: ${image.getWidth()}x${image.getHeight()}`);
 					}
 
 					// Calculate cursor position in API image coordinates
