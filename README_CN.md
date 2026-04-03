@@ -168,6 +168,34 @@ claude mcp add --scope user --transport stdio computer-use-local -- npx -y compu
 
 这个工具使用 [nut.js](https://github.com/nut-tree/nut.js) 与你的电脑通信。
 
+### 可用操作
+
+`computer` 工具支持以下操作：
+
+- **key**: 按下键或组合键（例如 "Command+Space"、"Control+C"）
+- **type**: 输入文本字符串
+- **mouse_move**: 移动光标到指定坐标
+- **left_click**: 左键点击（可选指定坐标）
+- **right_click**: 右键点击（可选指定坐标）
+- **middle_click**: 中键点击（可选指定坐标）
+- **double_click**: 双击左键（可选指定坐标）
+- **left_click_drag**: 点击并拖动到指定坐标
+- **scroll**: 滚动屏幕（"up"、"down"、"left"、"right"，可选滚动量如 "down:500"）
+- **get_screenshot**: 截取屏幕并标记光标位置
+- **get_cursor_position**: 获取当前光标坐标
+- **activate_app**: 将应用程序切换到前台（例如 "WeChat"、"Safari"）
+
+### 优化改进
+
+本实现基于 Claude Code 的方法进行了多项优化：
+
+- **PNG 格式**：使用 PNG 无损压缩，确保 AI 完美识别（特别是中文文字）
+- **鼠标稳定延迟**：鼠标移动后等待 50ms，避免触发悬停状态
+- **Retina 显示器支持**：正确处理高分辨率显示器的坐标转换
+- **跨平台应用激活**：在 macOS/Linux/Windows 上可靠地切换应用程序
+
+详细的坐标系统说明请参见 [COORDINATES.md](./COORDINATES.md)。
+
 ## 贡献
 
 欢迎在 GitHub 上提交 Pull Request！开始步骤：
@@ -195,3 +223,53 @@ npm install -g computer-use-mcp
 claude mcp remove computer-use-local
 
 claude mcp add --scope user --transport stdio computer-use-local -- computer-use-mcp
+
+
+Claude Code 原生方案的优势
+性能和质量：
+
+✅ 更快 - 原生 Swift/Rust 模块，无需 Node.js 层的图片处理
+✅ 更小 - JPEG 0.75 质量，比 PNG 小很多（你的截图 ~550KB vs 可能 ~150KB）
+✅ 更准确 - 直接使用 macOS SCContentFilter API，避免多次转换
+✅ 窗口过滤 - 可以排除终端等干扰窗口
+坐标系统：
+
+✅ 明确的坐标文档 - 有专门的 COORDINATES.md 说明
+✅ 清晰的转换链 - 逻辑 → 物理 → API 目标尺寸
+✅ 移动后延迟 - 50ms 稳定时间，避免触发悬停
+应用管理：
+
+✅ 隐藏干扰窗口 - 操作前自动隐藏其他应用
+✅ 激活目标应用 - 确保操作的应用在前台
+domdomegg 方案的优势
+跨平台：
+
+✅ Windows/Linux/macOS - 一套代码全平台
+✅ 简单 - 不需要编译原生模块
+✅ 开源免费 - 无商业许可证限制
+易于修改：
+
+✅ 纯 TypeScript - 容易理解和修改
+✅ 社区维护 - 可以自己 fork 和定制
+我的建议
+如果只用 macOS：
+
+考虑借鉴 Claude Code 的方案，使用原生模块
+但需要编译 Swift 和 Rust 代码，复杂度高
+如果需要跨平台：
+
+继续用 domdomegg 的方案
+但可以借鉴 Claude Code 的一些优化：
+✅ 改用 JPEG 格式（减小文件）
+✅ 增加鼠标移动后的延迟
+✅ 改进坐标转换逻辑（你已经修复了）
+实际情况：
+
+Claude Code 的原生模块（@ant/computer-use-swift、@ant/computer-use-input）是闭源的
+你无法直接使用，只能参考思路
+我的推荐： 继续用 domdomegg 的方案，但做这些优化：
+
+改用 JPEG 格式（减小 60% 文件大小）
+增加操作后的延迟
+优化提示词，让 AI 多用键盘少用鼠标
+要不要我帮你实现 JPEG 格式的改进？这个改动很小但效果明显。

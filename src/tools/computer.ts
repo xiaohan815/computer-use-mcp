@@ -135,6 +135,7 @@ const ActionEnum = z.enum([
 	'scroll',
 	'get_screenshot',
 	'get_cursor_position',
+	'activate_app',
 ]);
 
 const actionDescription = `The action to perform. The available actions are:
@@ -148,7 +149,8 @@ const actionDescription = `The action to perform. The available actions are:
 * middle_click: Click the middle mouse button. If coordinate is provided, moves to that position first.
 * double_click: Double-click the left mouse button. If coordinate is provided, moves to that position first.
 * scroll: Scroll the screen in a specified direction. Requires coordinate (moves there first) and text parameter with direction: "up", "down", "left", or "right". Optionally append ":N" to scroll N pixels (default 300), e.g. "down:500".
-* get_screenshot: Take a screenshot of the screen.`;
+* get_screenshot: Take a screenshot of the screen.
+* activate_app: Bring an application to the foreground. Requires text parameter with the application name (e.g. "WeChat", "Safari", "Terminal"). On macOS, uses the 'open -a' command. On Linux, uses 'wmctrl' or 'xdotool'. On Windows, uses PowerShell.`;
 
 const toolDescription = `Use a mouse and keyboard to interact with a computer, and take screenshots.
 * This is an interface to a desktop GUI. You do not have access to a terminal or applications menu. You must click on desktop icons to start applications.
@@ -257,12 +259,17 @@ export function registerComputer(server: McpServer): void {
 					}
 
 					await mouse.setPosition(new Point(scaledCoordinate[0], scaledCoordinate[1]));
+					// Wait 50ms for the mouse position to settle (same as Claude Code's MOVE_SETTLE_MS)
+					// This prevents triggering hover states and ensures the position is registered
+					await setTimeout(50);
 					return jsonResult({ok: true});
 				}
 
 				case 'left_click': {
 					if (scaledCoordinate) {
 						await mouse.setPosition(new Point(scaledCoordinate[0], scaledCoordinate[1]));
+						// Wait 50ms for the mouse position to settle before clicking
+						await setTimeout(50);
 					}
 
 					await mouse.leftClick();
@@ -283,6 +290,7 @@ export function registerComputer(server: McpServer): void {
 				case 'right_click': {
 					if (scaledCoordinate) {
 						await mouse.setPosition(new Point(scaledCoordinate[0], scaledCoordinate[1]));
+						await setTimeout(50);
 					}
 
 					await mouse.rightClick();
@@ -292,6 +300,7 @@ export function registerComputer(server: McpServer): void {
 				case 'middle_click': {
 					if (scaledCoordinate) {
 						await mouse.setPosition(new Point(scaledCoordinate[0], scaledCoordinate[1]));
+						await setTimeout(50);
 					}
 
 					await mouse.click(Button.MIDDLE);
@@ -301,6 +310,7 @@ export function registerComputer(server: McpServer): void {
 				case 'double_click': {
 					if (scaledCoordinate) {
 						await mouse.setPosition(new Point(scaledCoordinate[0], scaledCoordinate[1]));
+						await setTimeout(50);
 					}
 
 					await mouse.doubleClick(Button.LEFT);
@@ -330,8 +340,9 @@ export function registerComputer(server: McpServer): void {
 						throw new Error(`Invalid scroll amount: ${amountStr}`);
 					}
 
-					// Move to position first
+					// Move to position first and wait for settle
 					await mouse.setPosition(new Point(scaledCoordinate[0], scaledCoordinate[1]));
+					await setTimeout(50);
 
 					// Scroll in the specified direction
 					switch (direction.toLowerCase()) {
@@ -354,6 +365,72 @@ export function registerComputer(server: McpServer): void {
 					return jsonResult({ok: true});
 				}
 
+				case 'activate_app': {
+					if (!text) {
+						throw new Error('Text required for activate_app (application name)');
+					}
+
+					console.error(`[DEBUG] Activating application: ${text}`);
+
+					if (process.platform === 'darwin') {
+						// macOS: use 'open -a' command (verified to work)
+						try {
+							execFileSync('open', ['-a', text], {stdio: 'pipe'});
+							// Wait for the app to activate
+							await setTimeout(500);
+							console.error(`[DEBUG] Application activated successfully: ${text}`);
+							return jsonResult({ok: true, platform: 'darwin'});
+						} catch (error: unknown) {
+							const errorMsg = error instanceof Error ? error.message : String(error);
+							console.error(`[DEBUG] Failed to activate application: ${errorMsg}`);
+							throw new Error(`Failed to activate application "${text}": ${errorMsg}`);
+						}
+					} else if (process.platform === 'linux') {
+						// Linux: try wmctrl first, fallback to xdotool
+						try {
+							// Try wmctrl first (more reliable for activation)
+							try {
+								execFileSync('wmctrl', ['-a', text], {stdio: 'pipe'});
+								await setTimeout(500);
+								console.error(`[DEBUG] Application activated via wmctrl: ${text}`);
+								return jsonResult({ok: true, platform: 'linux', method: 'wmctrl'});
+							} catch {
+								// Fallback to xdotool
+								execFileSync('xdotool', ['search', '--name', text, 'windowactivate'], {
+									stdio: 'pipe',
+									env: {...process.env, DISPLAY: process.env.DISPLAY || ':0'},
+								});
+								await setTimeout(500);
+								console.error(`[DEBUG] Application activated via xdotool: ${text}`);
+								return jsonResult({ok: true, platform: 'linux', method: 'xdotool'});
+							}
+						} catch (error: unknown) {
+							const errorMsg = error instanceof Error ? error.message : String(error);
+							console.error(`[DEBUG] Failed to activate application: ${errorMsg}`);
+							throw new Error(`Failed to activate application "${text}". Make sure wmctrl or xdotool is installed: ${errorMsg}`);
+						}
+					} else if (process.platform === 'win32') {
+						// Windows: use PowerShell AppActivate
+						try {
+							execFileSync('powershell', [
+								'-NoProfile',
+								'-NonInteractive',
+								'-Command',
+								`$wshell = New-Object -ComObject WScript.Shell; $wshell.AppActivate('${text.replace(/'/g, "''")}')`,
+							], {stdio: 'pipe'});
+							await setTimeout(500);
+							console.error(`[DEBUG] Application activated via PowerShell: ${text}`);
+							return jsonResult({ok: true, platform: 'win32'});
+						} catch (error: unknown) {
+							const errorMsg = error instanceof Error ? error.message : String(error);
+							console.error(`[DEBUG] Failed to activate application: ${errorMsg}`);
+							throw new Error(`Failed to activate application "${text}": ${errorMsg}`);
+						}
+					} else {
+						throw new Error(`activate_app is not supported on platform: ${process.platform}`);
+					}
+				}
+
 				case 'get_screenshot': {
 					// Wait a bit to let things load before showing it to Claude
 					await setTimeout(1000);
@@ -368,28 +445,51 @@ export function registerComputer(server: McpServer): void {
 					console.error(`[DEBUG] Original image size: ${image.getWidth()}x${image.getHeight()}`);
 					console.error(`[DEBUG] Cursor position (logical): [${cursorPos.x}, ${cursorPos.y}]`);
 
-					// Then resize to fit within API limits
-					const apiScaleFactor = getSizeToApiScale(image.getWidth(), image.getHeight());
+					// Get logical screen dimensions
+					const logicalWidth = await screen.width();
+					const logicalHeight = await screen.height();
+					
+					// Calculate scale factors (following Claude Code's approach)
+					// Physical dimensions from the captured image
+					const physicalWidth = image.getWidth();
+					const physicalHeight = image.getHeight();
+					
+					// Retina scale factor: physical / logical (typically 2.0 on Retina displays)
+					const retinaScale = physicalWidth / logicalWidth;
+					
+					console.error(`[DEBUG] Logical screen: ${logicalWidth}x${logicalHeight}`);
+					console.error(`[DEBUG] Physical screen: ${physicalWidth}x${physicalHeight}`);
+					console.error(`[DEBUG] Retina scale: ${retinaScale}`);
+
+					// Resize to fit within API limits
+					const apiScaleFactor = getSizeToApiScale(physicalWidth, physicalHeight);
 					console.error(`[DEBUG] API scale factor: ${apiScaleFactor}`);
+					
 					if (apiScaleFactor < 1) {
 						image.resize(
-							Math.floor(image.getWidth() * apiScaleFactor),
-							Math.floor(image.getHeight() * apiScaleFactor),
+							Math.floor(physicalWidth * apiScaleFactor),
+							Math.floor(physicalHeight * apiScaleFactor),
 						);
 						console.error(`[DEBUG] Resized image to: ${image.getWidth()}x${image.getHeight()}`);
 					}
 
+					const imageWidth = image.getWidth();
+					const imageHeight = image.getHeight();
+
 					// Calculate cursor position in API image coordinates
-					// cursor is in logical coords, need to convert to API image coords
-					const scale = await getApiToLogicalScale();
-					const cursorInImageX = Math.floor(cursorPos.x / scale);
-					const cursorInImageY = Math.floor(cursorPos.y / scale);
+					// Conversion chain: Logical → Physical → API Image
+					// Following Claude Code's computeTargetDims approach
+					const physicalCursorX = cursorPos.x * retinaScale;
+					const physicalCursorY = cursorPos.y * retinaScale;
+					const cursorInImageX = Math.floor(physicalCursorX * imageWidth / physicalWidth);
+					const cursorInImageY = Math.floor(physicalCursorY * imageHeight / physicalHeight);
+
+					console.error(`[DEBUG] Physical cursor: [${physicalCursorX}, ${physicalCursorY}]`);
+					console.error(`[DEBUG] Cursor in image: [${cursorInImageX}, ${cursorInImageY}]`);
 
 					// Draw a crosshair at cursor position (red color)
 					const crosshairSize = 20;
 					const crosshairColor = 0xFF0000FF; // Red with full opacity (RGBA)
-					const imageWidth = image.getWidth();
-					const imageHeight = image.getHeight();
 
 					// Draw horizontal line
 					for (let x = Math.max(0, cursorInImageX - crosshairSize); x <= Math.min(imageWidth - 1, cursorInImageX + crosshairSize); x++) {
@@ -424,10 +524,24 @@ export function registerComputer(server: McpServer): void {
 					// Get PNG buffer from Jimp
 					const pngBuffer = await image.getBufferAsync('image/png');
 
-					// Compress PNG using sharp, to fit size limits
+					// Use PNG format for best quality (especially for Chinese text recognition)
+					// File size: ~550KB, but ensures perfect AI recognition
 					const optimizedBuffer = await sharp(pngBuffer)
 						.png({quality: 80, compressionLevel: 9})
 						.toBuffer();
+
+					console.error(`[DEBUG] Screenshot format: PNG`);
+					console.error(`[DEBUG] Screenshot size: ${optimizedBuffer.length} bytes`);
+
+					// Save screenshot for debugging (optional)
+					try {
+						const fs = await import('node:fs');
+						const tmpPath = `/tmp/computer-use-mcp-screenshot-${Date.now()}.png`;
+						fs.writeFileSync(tmpPath, optimizedBuffer);
+						console.error(`[DEBUG] Screenshot saved to: ${tmpPath}`);
+					} catch (err) {
+						console.error(`[DEBUG] Failed to save screenshot: ${err}`);
+					}
 
 					// Convert optimized buffer to base64
 					const base64Data = optimizedBuffer.toString('base64');

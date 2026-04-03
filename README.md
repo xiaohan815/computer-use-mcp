@@ -128,6 +128,34 @@ We implement a near identical computer use tool to [Anthropic's official compute
 
 This talks to your computer using [nut.js](https://github.com/nut-tree/nut.js)
 
+### Available Actions
+
+The `computer` tool supports the following actions:
+
+- **key**: Press a key or key combination (e.g., "Command+Space", "Control+C")
+- **type**: Type a string of text
+- **mouse_move**: Move cursor to specified coordinates
+- **left_click**: Click left mouse button (optionally at coordinates)
+- **right_click**: Click right mouse button (optionally at coordinates)
+- **middle_click**: Click middle mouse button (optionally at coordinates)
+- **double_click**: Double-click left mouse button (optionally at coordinates)
+- **left_click_drag**: Click and drag to specified coordinates
+- **scroll**: Scroll in a direction ("up", "down", "left", "right", optionally with amount like "down:500")
+- **get_screenshot**: Capture screen with cursor position marked
+- **get_cursor_position**: Get current cursor coordinates
+- **activate_app**: Bring an application to the foreground (e.g., "WeChat", "Safari")
+
+### Optimizations
+
+This implementation includes several optimizations based on Claude Code's approach:
+
+- **PNG format**: Uses PNG lossless compression for perfect AI recognition (especially for Chinese text)
+- **Mouse settle delay**: 50ms delay after mouse movements to prevent hover state issues
+- **Retina display support**: Proper coordinate conversion for high-DPI displays
+- **Cross-platform app activation**: Reliable application switching on macOS/Linux/Windows
+
+See [COORDINATES.md](./COORDINATES.md) for detailed coordinate system documentation.
+
 ## Contributing
 
 Pull requests are welcomed on GitHub! To get started:
