@@ -132,18 +132,35 @@ This talks to your computer using [nut.js](https://github.com/nut-tree/nut.js)
 
 The `computer` tool supports the following actions:
 
+#### Mouse & Keyboard
 - **key**: Press a key or key combination (e.g., "Command+Space", "Control+C")
 - **type**: Type a string of text
+- **hold_key**: Hold down a key for a specified duration (e.g., "shift:2" holds Shift for 2 seconds)
+
+#### Mouse Actions
 - **mouse_move**: Move cursor to specified coordinates
 - **left_click**: Click left mouse button (optionally at coordinates)
 - **right_click**: Click right mouse button (optionally at coordinates)
 - **middle_click**: Click middle mouse button (optionally at coordinates)
 - **double_click**: Double-click left mouse button (optionally at coordinates)
+- **triple_click**: Triple-click left mouse button to select paragraph (optionally at coordinates)
 - **left_click_drag**: Click and drag to specified coordinates
+- **left_mouse_down**: Press and hold left mouse button (for fine-grained drag control)
+- **left_mouse_up**: Release left mouse button
 - **scroll**: Scroll in a direction ("up", "down", "left", "right", optionally with amount like "down:500")
+
+#### Screen & Vision
 - **get_screenshot**: Capture screen with cursor position marked
+- **zoom**: Capture and zoom into a specific region [x, y, width, height] for better detail
 - **get_cursor_position**: Get current cursor coordinates
-- **activate_app**: Bring an application to the foreground (e.g., "WeChat", "Safari")
+
+#### System Control
+- **open_application**: Open or bring an application to the foreground (e.g., "WeChat", "Safari")
+- **wait**: Wait for a specified duration in seconds (e.g., "2" for 2 seconds, "0.5" for 500ms)
+
+#### Clipboard
+- **read_clipboard**: Read the current text content from the system clipboard
+- **write_clipboard**: Write text to the system clipboard
 
 ### Optimizations
 
@@ -154,7 +171,16 @@ This implementation includes several optimizations based on Claude Code's approa
 - **Retina display support**: Proper coordinate conversion for high-DPI displays
 - **Cross-platform app activation**: Reliable application switching on macOS/Linux/Windows
 
-See [COORDINATES.md](./COORDINATES.md) for detailed coordinate system documentation.
+See [COORDINATES.md](./docs/COORDINATES.md) for detailed coordinate system documentation.
+
+## Documentation
+
+For detailed documentation, see the [docs](./docs) directory:
+
+- **[Usage Examples](./docs/USAGE_EXAMPLES.md)** - 12 practical examples
+- **[Coordinates System](./docs/COORDINATES.md)** - Coordinate conversion explained
+- **[Optimization Plan](./docs/OPTIMIZATION_PLAN.md)** - Development roadmap
+- **[Phase 4 Implementation](./docs/PHASE4_IMPLEMENTATION.md)** - New features details
 
 ## Contributing
 

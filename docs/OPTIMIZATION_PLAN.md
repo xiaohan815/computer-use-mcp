@@ -15,7 +15,7 @@
 - [x] 截图格式：保持 PNG（确保 AI 识别准确，特别是中文）
 
 ### 🔄 Phase 2: 功能增强（✅ 已完成）
-- [x] 应用激活功能（macOS + Linux + Windows）
+- [x] 应用打开功能（macOS + Linux + Windows）
   - macOS: `open -a` 命令（已验证有效）
   - Linux: `wmctrl` 或 `xdotool`（自动 fallback）
   - Windows: PowerShell `AppActivate`
@@ -66,20 +66,20 @@ case 'left_click': {
 
 ---
 
-#### 3. 应用激活功能
+#### 3. 应用打开功能
 **目标**：确保操作的应用在前台
 
 **实现方案**：
 ```typescript
-// 新增 action: activate_app
-case 'activate_app': {
+// 新增 action: open_application
+case 'open_application': {
   if (!text) {
-    throw new Error('Text required for activate_app (application name)');
+    throw new Error('Text required for open_application (application name)');
   }
   
   if (process.platform === 'darwin') {
     execFileSync('open', ['-a', text]);
-    await setTimeout(500);  // 等待应用激活
+    await setTimeout(500);  // 等待应用打开
     return jsonResult({ok: true});
   } else if (process.platform === 'linux') {
     // Linux: 使用 wmctrl 或 xdotool
@@ -101,7 +101,7 @@ case 'activate_app': {
 **优点**：
 - ✅ macOS: `open -a` 已验证有效
 - ✅ 跨平台支持
-- AI 可以在操作前先激活目标应用
+- AI 可以在操作前先打开目标应用
 
 **工作量**：⭐⭐ 中等（需要跨平台实现）
 
@@ -271,3 +271,161 @@ wmctrl -a firefox && sleep 0.5 && xdotool getactivewindow getwindowname
 2. 按 Phase 1 → Phase 2 → Phase 3 顺序实施
 3. 每个 Phase 完成后测试验证
 4. 更新文档和示例
+
+
+---
+
+## 🚀 Phase 4: 功能对齐 Claude Code（✅ 已完成）
+
+基于 Claude Code 源码分析（详见 [CLAUDE_CODE_TOOLS_COMPARISON.md](./CLAUDE_CODE_TOOLS_COMPARISON.md)），补充缺失的功能。
+
+### 当前状态
+- Claude Code: 23 个 tools
+- domdomegg: 20 个 tools  
+- 覆盖率: 87%（基础操作 100%）
+
+### 已实现功能
+
+#### ✅ 1. wait - 等待功能
+**实现**：等待指定时间，让应用有时间加载
+
+**用法**：
+```typescript
+{action: 'wait', text: '2'}  // 等待 2 秒
+{action: 'wait', text: '0.5'}  // 等待 500 毫秒
+```
+
+**优点**：
+- 实现极简
+- 用途广泛：等待页面加载、动画完成、应用启动
+- AI 可以自主控制等待时间
+
+---
+
+#### ✅ 2. read_clipboard / write_clipboard - 剪贴板操作
+**实现**：读写系统剪贴板，方便复制粘贴大段文本
+
+**用法**：
+```typescript
+{action: 'read_clipboard'}  // 读取剪贴板
+{action: 'write_clipboard', text: 'Hello World'}  // 写入剪贴板
+```
+
+**优点**：
+- 跨平台支持（macOS/Linux/Windows）
+- 比 type 更快（大段文本）
+- 可以保留格式
+
+**实现细节**：
+- macOS: `pbpaste` / `pbcopy`
+- Linux: `xclip`
+- Windows: PowerShell `Get-Clipboard` / `Set-Clipboard`
+
+---
+
+#### ✅ 3. zoom - 区域放大截图
+**实现**：截取并放大指定区域，方便查看小字
+
+**用法**：
+```typescript
+{action: 'zoom', coordinate: [100, 100, 200, 150]}  // [x, y, width, height]
+```
+
+**优点**：
+- 查看小字更清晰
+- 精确操作更准确
+- 减少 AI 视觉判断错误
+
+**实现细节**：
+- 截取指定区域
+- 放大到 API 限制的最大尺寸
+- 返回放大后的图片和元数据
+
+---
+
+#### ✅ 4. triple_click - 三击
+**实现**：三击选择段落
+
+**用法**：
+```typescript
+{action: 'triple_click', coordinate: [100, 200]}
+```
+
+**优点**：
+- 快速选择整段文本
+- 比拖拽选择更可靠
+
+---
+
+#### ✅ 5. hold_key - 长按键
+**实现**：长按键盘按键
+
+**用法**：
+```typescript
+{action: 'hold_key', text: 'shift:2'}  // 按住 Shift 2 秒
+{action: 'hold_key', text: 'control'}  // 按住 Control 1 秒（默认）
+```
+
+**优点**：
+- 支持需要长按的操作
+- 可自定义按键时长
+
+---
+
+#### ✅ 6. left_mouse_down / left_mouse_up - 精细拖拽控制
+**实现**：分离按下和释放，精细控制拖拽
+
+**用法**：
+```typescript
+{action: 'left_mouse_down', coordinate: [100, 100]}
+{action: 'mouse_move', coordinate: [200, 200]}
+{action: 'left_mouse_up'}
+```
+
+**优点**：
+- 更精细的拖拽控制
+- 可以在拖拽过程中执行其他操作
+
+---
+
+## 📊 实施优先级总结
+
+### ✅ 第一批（快速实现，高价值）- 已完成
+1. ✅ **wait** - 10 分钟，价值 ⭐⭐⭐⭐⭐
+2. ✅ **triple_click** - 10 分钟，价值 ⭐⭐⭐
+3. ✅ **read_clipboard** - 30 分钟，价值 ⭐⭐⭐⭐
+4. ✅ **write_clipboard** - 30 分钟，价值 ⭐⭐⭐⭐
+
+**总工作量**：~1.5 小时
+
+### ✅ 第二批（中等实现，提升体验）- 已完成
+5. ✅ **zoom** - 1 小时，价值 ⭐⭐⭐⭐
+6. ✅ **hold_key** - 30 分钟，价值 ⭐⭐⭐
+7. ✅ **left_mouse_down/up** - 20 分钟，价值 ⭐⭐
+
+**总工作量**：~2 小时
+
+### ⏸️ 第三批（复杂实现，高级功能）- 暂不实施
+8. ⏸️ **computer_batch** - 2 小时，价值 ⭐⭐⭐⭐⭐
+
+**总工作量**：~2 小时
+
+### 暂不实施
+- ❌ **request_access** - 权限管理（复杂度高，4+ 小时）
+- ❌ **list_granted_applications** - 权限管理（复杂度高）
+
+---
+
+## 🎯 预期效果（Phase 4 完成后）
+
+| 指标 | 当前 | Phase 4 后 | 提升 |
+|------|------|-----------|------|
+| Tools 数量 | 12 | 20 | +67% |
+| 功能覆盖率 | 52% | 87% | +35% |
+| 剪贴板支持 | ❌ | ✅ | 新增 |
+| 批量操作 | ❌ | ⏸️ | 待定 |
+| 区域放大 | ❌ | ✅ | 新增 |
+| 等待功能 | ❌ | ✅ | 新增 |
+| 三击选择 | ❌ | ✅ | 新增 |
+| 长按键 | ❌ | ✅ | 新增 |
+| 精细拖拽 | ❌ | ✅ | 新增 |

@@ -132,10 +132,18 @@ const ActionEnum = z.enum([
 	'right_click',
 	'middle_click',
 	'double_click',
+	'triple_click',
 	'scroll',
 	'get_screenshot',
 	'get_cursor_position',
-	'activate_app',
+	'open_application',
+	'wait',
+	'read_clipboard',
+	'write_clipboard',
+	'zoom',
+	'hold_key',
+	'left_mouse_down',
+	'left_mouse_up',
 ]);
 
 const actionDescription = `The action to perform. The available actions are:
@@ -148,9 +156,17 @@ const actionDescription = `The action to perform. The available actions are:
 * right_click: Click the right mouse button. If coordinate is provided, moves to that position first.
 * middle_click: Click the middle mouse button. If coordinate is provided, moves to that position first.
 * double_click: Double-click the left mouse button. If coordinate is provided, moves to that position first.
+* triple_click: Triple-click the left mouse button to select a paragraph. If coordinate is provided, moves to that position first.
 * scroll: Scroll the screen in a specified direction. Requires coordinate (moves there first) and text parameter with direction: "up", "down", "left", or "right". Optionally append ":N" to scroll N pixels (default 300), e.g. "down:500".
 * get_screenshot: Take a screenshot of the screen.
-* activate_app: Bring an application to the foreground. Requires text parameter with the application name (e.g. "WeChat", "Safari", "Terminal"). On macOS, uses the 'open -a' command. On Linux, uses 'wmctrl' or 'xdotool'. On Windows, uses PowerShell.`;
+* open_application: Open or bring an application to the foreground. Requires text parameter with the application name (e.g. "WeChat", "Safari", "Terminal"). On macOS, uses the 'open -a' command. On Linux, uses 'wmctrl' or 'xdotool'. On Windows, uses PowerShell.
+* wait: Wait for a specified duration in seconds. Requires text parameter with duration (e.g. "2" for 2 seconds, "0.5" for 500ms). Useful for waiting for applications to load or animations to complete.
+* read_clipboard: Read the current text content from the system clipboard.
+* write_clipboard: Write text to the system clipboard. Requires text parameter with the content to write.
+* zoom: Capture and zoom into a specific region of the screen. Requires coordinate parameter with [x, y, width, height]. The region will be enlarged to fit API limits for better detail visibility.
+* hold_key: Hold down a key for a specified duration. Requires text parameter in format "key:duration" (e.g. "shift:2" to hold Shift for 2 seconds). Duration defaults to 1 second if not specified.
+* left_mouse_down: Press and hold the left mouse button without releasing. Useful for fine-grained drag control.
+* left_mouse_up: Release the left mouse button. Used in combination with left_mouse_down for precise drag operations.`;
 
 const toolDescription = `Use a mouse and keyboard to interact with a computer, and take screenshots.
 * This is an interface to a desktop GUI. You do not have access to a terminal or applications menu. You must click on desktop icons to start applications.
@@ -168,8 +184,7 @@ Using the crosshair:
 
 const coordinateSchema = z
 	.array(z.number())
-	.length(2)
-	.describe('(x, y): The x (pixels from the left edge) and y (pixels from the top edge) coordinates');
+	.describe('(x, y) for most actions: The x (pixels from the left edge) and y (pixels from the top edge) coordinates. For zoom action: [x, y, width, height] to specify the region to zoom into.');
 
 export function registerComputer(server: McpServer): void {
 	server.registerTool(
@@ -188,29 +203,36 @@ export function registerComputer(server: McpServer): void {
 			},
 		},
 		async (args) => {
-			const {action, coordinate, text} = args as {action: z.infer<typeof ActionEnum>; coordinate?: [number, number]; text?: string};
+			const {action, coordinate, text} = args as {action: z.infer<typeof ActionEnum>; coordinate?: number[]; text?: string};
 
 			// Scale coordinates from API image space to logical screen space
-			let scaledCoordinate = coordinate;
-			if (coordinate) {
+			let scaledCoordinate: [number, number] | undefined;
+			if (coordinate && action !== 'zoom') {
+				// For zoom, we handle coordinates differently (4 values instead of 2)
+				if (coordinate.length !== 2) {
+					throw new Error('Coordinate must be [x, y] for this action');
+				}
+
+				const coord = coordinate as [number, number];
+				const [x, y] = coord;
 				const scale = await getApiToLogicalScale();
 				scaledCoordinate = [
-					Math.round(coordinate[0] * scale),
-					Math.round(coordinate[1] * scale),
+					Math.round(x * scale),
+					Math.round(y * scale),
 				];
 
 				// Debug logging
 				console.error(`[DEBUG] Action: ${action}`);
-				console.error(`[DEBUG] Original coordinate: [${coordinate[0]}, ${coordinate[1]}]`);
+				console.error(`[DEBUG] Original coordinate: [${x}, ${y}]`);
 				console.error(`[DEBUG] Scale factor: ${scale}`);
 				console.error(`[DEBUG] Scaled coordinate: [${scaledCoordinate[0]}, ${scaledCoordinate[1]}]`);
 
 				// Validate coordinates are within display bounds
-				const [x, y] = scaledCoordinate;
+				const [scaledX, scaledY] = scaledCoordinate;
 				const [width, height] = [await screen.width(), await screen.height()];
 				console.error(`[DEBUG] Screen size: ${width}x${height}`);
-				if (x < 0 || x >= width || y < 0 || y >= height) {
-					throw new Error(`Coordinates (${x}, ${y}) are outside display bounds of ${width}x${height}`);
+				if (scaledX < 0 || scaledX >= width || scaledY < 0 || scaledY >= height) {
+					throw new Error(`Coordinates (${scaledX}, ${scaledY}) are outside display bounds of ${width}x${height}`);
 				}
 			}
 
@@ -365,25 +387,25 @@ export function registerComputer(server: McpServer): void {
 					return jsonResult({ok: true});
 				}
 
-				case 'activate_app': {
+				case 'open_application': {
 					if (!text) {
-						throw new Error('Text required for activate_app (application name)');
+						throw new Error('Text required for open_application (application name)');
 					}
 
-					console.error(`[DEBUG] Activating application: ${text}`);
+					console.error(`[DEBUG] Opening application: ${text}`);
 
 					if (process.platform === 'darwin') {
 						// macOS: use 'open -a' command (verified to work)
 						try {
 							execFileSync('open', ['-a', text], {stdio: 'pipe'});
-							// Wait for the app to activate
+							// Wait for the app to open/activate
 							await setTimeout(500);
-							console.error(`[DEBUG] Application activated successfully: ${text}`);
+							console.error(`[DEBUG] Application opened successfully: ${text}`);
 							return jsonResult({ok: true, platform: 'darwin'});
 						} catch (error: unknown) {
 							const errorMsg = error instanceof Error ? error.message : String(error);
-							console.error(`[DEBUG] Failed to activate application: ${errorMsg}`);
-							throw new Error(`Failed to activate application "${text}": ${errorMsg}`);
+							console.error(`[DEBUG] Failed to open application: ${errorMsg}`);
+							throw new Error(`Failed to open application "${text}": ${errorMsg}`);
 						}
 					} else if (process.platform === 'linux') {
 						// Linux: try wmctrl first, fallback to xdotool
@@ -392,7 +414,7 @@ export function registerComputer(server: McpServer): void {
 							try {
 								execFileSync('wmctrl', ['-a', text], {stdio: 'pipe'});
 								await setTimeout(500);
-								console.error(`[DEBUG] Application activated via wmctrl: ${text}`);
+								console.error(`[DEBUG] Application opened via wmctrl: ${text}`);
 								return jsonResult({ok: true, platform: 'linux', method: 'wmctrl'});
 							} catch {
 								// Fallback to xdotool
@@ -401,13 +423,13 @@ export function registerComputer(server: McpServer): void {
 									env: {...process.env, DISPLAY: process.env.DISPLAY || ':0'},
 								});
 								await setTimeout(500);
-								console.error(`[DEBUG] Application activated via xdotool: ${text}`);
+								console.error(`[DEBUG] Application opened via xdotool: ${text}`);
 								return jsonResult({ok: true, platform: 'linux', method: 'xdotool'});
 							}
 						} catch (error: unknown) {
 							const errorMsg = error instanceof Error ? error.message : String(error);
-							console.error(`[DEBUG] Failed to activate application: ${errorMsg}`);
-							throw new Error(`Failed to activate application "${text}". Make sure wmctrl or xdotool is installed: ${errorMsg}`);
+							console.error(`[DEBUG] Failed to open application: ${errorMsg}`);
+							throw new Error(`Failed to open application "${text}". Make sure wmctrl or xdotool is installed: ${errorMsg}`);
 						}
 					} else if (process.platform === 'win32') {
 						// Windows: use PowerShell AppActivate
@@ -419,16 +441,253 @@ export function registerComputer(server: McpServer): void {
 								`$wshell = New-Object -ComObject WScript.Shell; $wshell.AppActivate('${text.replace(/'/g, "''")}')`,
 							], {stdio: 'pipe'});
 							await setTimeout(500);
-							console.error(`[DEBUG] Application activated via PowerShell: ${text}`);
+							console.error(`[DEBUG] Application opened via PowerShell: ${text}`);
 							return jsonResult({ok: true, platform: 'win32'});
 						} catch (error: unknown) {
 							const errorMsg = error instanceof Error ? error.message : String(error);
-							console.error(`[DEBUG] Failed to activate application: ${errorMsg}`);
-							throw new Error(`Failed to activate application "${text}": ${errorMsg}`);
+							console.error(`[DEBUG] Failed to open application: ${errorMsg}`);
+							throw new Error(`Failed to open application "${text}": ${errorMsg}`);
 						}
 					} else {
-						throw new Error(`activate_app is not supported on platform: ${process.platform}`);
+						throw new Error(`open_application is not supported on platform: ${process.platform}`);
 					}
+				}
+
+				case 'triple_click': {
+					if (scaledCoordinate) {
+						await mouse.setPosition(new Point(scaledCoordinate[0], scaledCoordinate[1]));
+						await setTimeout(50);
+					}
+
+					// Triple-click to select paragraph (click 3 times)
+					await mouse.leftClick();
+					await mouse.leftClick();
+					await mouse.leftClick();
+					return jsonResult({ok: true});
+				}
+
+				case 'wait': {
+					if (!text) {
+						throw new Error('Text required for wait (duration in seconds)');
+					}
+
+					const duration = parseFloat(text);
+					if (isNaN(duration) || duration <= 0) {
+						throw new Error(`Invalid duration: ${text}. Must be a positive number.`);
+					}
+
+					console.error(`[DEBUG] Waiting for ${duration} seconds`);
+					await setTimeout(duration * 1000);
+					return jsonResult({ok: true, duration});
+				}
+
+				case 'read_clipboard': {
+					console.error('[DEBUG] Reading clipboard');
+					try {
+						let clipboardText: string;
+
+						if (process.platform === 'darwin') {
+							// macOS: use pbpaste
+							clipboardText = execFileSync('pbpaste', [], {encoding: 'utf8'});
+						} else if (process.platform === 'linux') {
+							// Linux: use xclip
+							clipboardText = execFileSync('xclip', ['-selection', 'clipboard', '-o'], {
+								encoding: 'utf8',
+								env: {...process.env, DISPLAY: process.env.DISPLAY || ':0'},
+							});
+						} else if (process.platform === 'win32') {
+							// Windows: use PowerShell Get-Clipboard
+							clipboardText = execFileSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', 'Get-Clipboard'], {
+								encoding: 'utf8',
+							});
+						} else {
+							throw new Error(`read_clipboard is not supported on platform: ${process.platform}`);
+						}
+
+						console.error(`[DEBUG] Clipboard content length: ${clipboardText.length} characters`);
+						return jsonResult({text: clipboardText});
+					} catch (error: unknown) {
+						const errorMsg = error instanceof Error ? error.message : String(error);
+						console.error(`[DEBUG] Failed to read clipboard: ${errorMsg}`);
+						throw new Error(`Failed to read clipboard: ${errorMsg}`);
+					}
+				}
+
+				case 'write_clipboard': {
+					if (!text) {
+						throw new Error('Text required for write_clipboard');
+					}
+
+					console.error(`[DEBUG] Writing to clipboard (${text.length} characters)`);
+					try {
+						if (process.platform === 'darwin') {
+							// macOS: use pbcopy
+							execFileSync('pbcopy', [], {input: text});
+						} else if (process.platform === 'linux') {
+							// Linux: use xclip
+							execFileSync('xclip', ['-selection', 'clipboard'], {
+								input: text,
+								env: {...process.env, DISPLAY: process.env.DISPLAY || ':0'},
+							});
+						} else if (process.platform === 'win32') {
+							// Windows: use PowerShell Set-Clipboard
+							// Escape double quotes and wrap in single quotes for PowerShell
+							const escapedText = text.replace(/"/g, '""');
+							execFileSync('powershell', [
+								'-NoProfile',
+								'-NonInteractive',
+								'-Command',
+								`Set-Clipboard -Value "${escapedText}"`,
+							]);
+						} else {
+							throw new Error(`write_clipboard is not supported on platform: ${process.platform}`);
+						}
+
+						console.error('[DEBUG] Clipboard written successfully');
+						return jsonResult({ok: true});
+					} catch (error: unknown) {
+						const errorMsg = error instanceof Error ? error.message : String(error);
+						console.error(`[DEBUG] Failed to write clipboard: ${errorMsg}`);
+						throw new Error(`Failed to write clipboard: ${errorMsg}`);
+					}
+				}
+
+				case 'zoom': {
+					if (!coordinate || coordinate.length !== 4) {
+						throw new Error('Coordinate required for zoom: [x, y, width, height]');
+					}
+
+					const coord = coordinate as [number, number, number, number];
+					const [x, y, width, height] = coord;
+					console.error(`[DEBUG] Zooming region: [${x}, ${y}, ${width}, ${height}]`);
+
+					// Scale coordinates from API image space to logical screen space
+					const scale = await getApiToLogicalScale();
+					const scaledX = Math.round(x * scale);
+					const scaledY = Math.round(y * scale);
+					const scaledWidth = Math.round(width * scale);
+					const scaledHeight = Math.round(height * scale);
+
+					console.error(`[DEBUG] Scaled region: [${scaledX}, ${scaledY}, ${scaledWidth}, ${scaledHeight}]`);
+
+					// Validate region is within display bounds
+					const [screenWidth, screenHeight] = [await screen.width(), await screen.height()];
+					if (scaledX < 0 || scaledY < 0 || scaledX + scaledWidth > screenWidth || scaledY + scaledHeight > screenHeight) {
+						throw new Error(`Region (${scaledX}, ${scaledY}, ${scaledWidth}, ${scaledHeight}) is outside display bounds of ${screenWidth}x${screenHeight}`);
+					}
+
+					// Capture the entire screen
+					const fullImage = await grabScreen();
+
+					// Get physical dimensions
+					const physicalWidth = fullImage.getWidth();
+					const physicalHeight = fullImage.getHeight();
+					const logicalWidth = await screen.width();
+					const logicalHeight = await screen.height();
+					const retinaScale = physicalWidth / logicalWidth;
+
+					// Convert to physical coordinates for cropping
+					const physicalX = Math.round(scaledX * retinaScale);
+					const physicalY = Math.round(scaledY * retinaScale);
+					const physicalCropWidth = Math.round(scaledWidth * retinaScale);
+					const physicalCropHeight = Math.round(scaledHeight * retinaScale);
+
+					console.error(`[DEBUG] Physical crop region: [${physicalX}, ${physicalY}, ${physicalCropWidth}, ${physicalCropHeight}]`);
+
+					// Crop the region
+					const cropped = fullImage.crop(physicalX, physicalY, physicalCropWidth, physicalCropHeight);
+
+					// Calculate zoom scale to maximize the region within API limits
+					const zoomScale = Math.min(
+						maxLongEdge / Math.max(physicalCropWidth, physicalCropHeight),
+						Math.sqrt(maxPixels / (physicalCropWidth * physicalCropHeight)),
+					);
+
+					console.error(`[DEBUG] Zoom scale: ${zoomScale}`);
+
+					// Apply zoom if it would enlarge the image
+					if (zoomScale > 1) {
+						const zoomedWidth = Math.floor(physicalCropWidth * zoomScale);
+						const zoomedHeight = Math.floor(physicalCropHeight * zoomScale);
+						cropped.resize(zoomedWidth, zoomedHeight);
+						console.error(`[DEBUG] Zoomed to: ${zoomedWidth}x${zoomedHeight}`);
+					}
+
+					// Convert to PNG
+					const pngBuffer = await cropped.getBufferAsync('image/png');
+					const optimizedBuffer = await sharp(pngBuffer)
+						.png({quality: 80, compressionLevel: 9})
+						.toBuffer();
+
+					console.error(`[DEBUG] Zoomed screenshot size: ${optimizedBuffer.length} bytes`);
+
+					// Convert to base64
+					const base64Data = optimizedBuffer.toString('base64');
+
+					return {
+						content: [
+							{
+								type: 'text',
+								text: JSON.stringify({
+									image_width: cropped.getWidth(),
+									image_height: cropped.getHeight(),
+									original_region: {x, y, width, height},
+									zoom_scale: zoomScale,
+								}),
+							},
+							{
+								type: 'image',
+								data: base64Data,
+								mimeType: 'image/png',
+							},
+						],
+					};
+				}
+
+				case 'hold_key': {
+					if (!text) {
+						throw new Error('Text required for hold_key (format: "key:duration" or just "key")');
+					}
+
+					// Parse key and optional duration from text (e.g. "shift:2" or just "shift")
+					const parts = text.split(':');
+					const keyName = parts[0];
+					const durationStr = parts[1];
+					const duration = durationStr ? parseFloat(durationStr) : 1.0;
+
+					if (!keyName) {
+						throw new Error('Key name required for hold_key');
+					}
+
+					if (isNaN(duration) || duration <= 0) {
+						throw new Error(`Invalid duration: ${durationStr}. Must be a positive number.`);
+					}
+
+					console.error(`[DEBUG] Holding key "${keyName}" for ${duration} seconds`);
+
+					const keys = toKeys(keyName);
+					await keyboard.pressKey(...keys);
+					await setTimeout(duration * 1000);
+					await keyboard.releaseKey(...keys);
+
+					return jsonResult({ok: true, key: keyName, duration});
+				}
+
+				case 'left_mouse_down': {
+					if (scaledCoordinate) {
+						await mouse.setPosition(new Point(scaledCoordinate[0], scaledCoordinate[1]));
+						await setTimeout(50);
+					}
+
+					console.error('[DEBUG] Pressing left mouse button (holding)');
+					await mouse.pressButton(Button.LEFT);
+					return jsonResult({ok: true});
+				}
+
+				case 'left_mouse_up': {
+					console.error('[DEBUG] Releasing left mouse button');
+					await mouse.releaseButton(Button.LEFT);
+					return jsonResult({ok: true});
 				}
 
 				case 'get_screenshot': {

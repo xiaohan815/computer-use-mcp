@@ -172,18 +172,35 @@ claude mcp add --scope user --transport stdio computer-use-local -- npx -y compu
 
 `computer` 工具支持以下操作：
 
+#### 键盘操作
 - **key**: 按下键或组合键（例如 "Command+Space"、"Control+C"）
 - **type**: 输入文本字符串
+- **hold_key**: 长按键盘按键（例如 "shift:2" 表示按住 Shift 键 2 秒）
+
+#### 鼠标操作
 - **mouse_move**: 移动光标到指定坐标
 - **left_click**: 左键点击（可选指定坐标）
 - **right_click**: 右键点击（可选指定坐标）
 - **middle_click**: 中键点击（可选指定坐标）
 - **double_click**: 双击左键（可选指定坐标）
+- **triple_click**: 三击左键选择段落（可选指定坐标）
 - **left_click_drag**: 点击并拖动到指定坐标
+- **left_mouse_down**: 按住左键不放（用于精细拖拽控制）
+- **left_mouse_up**: 释放左键
 - **scroll**: 滚动屏幕（"up"、"down"、"left"、"right"，可选滚动量如 "down:500"）
+
+#### 屏幕与视觉
 - **get_screenshot**: 截取屏幕并标记光标位置
+- **zoom**: 截取并放大指定区域 [x, y, width, height]，方便查看细节
 - **get_cursor_position**: 获取当前光标坐标
-- **activate_app**: 将应用程序切换到前台（例如 "WeChat"、"Safari"）
+
+#### 系统控制
+- **open_application**: 打开或将应用程序切换到前台（例如 "WeChat"、"Safari"）
+- **wait**: 等待指定时长（例如 "2" 表示 2 秒，"0.5" 表示 500 毫秒）
+
+#### 剪贴板
+- **read_clipboard**: 读取系统剪贴板的文本内容
+- **write_clipboard**: 将文本写入系统剪贴板
 
 ### 优化改进
 
@@ -194,7 +211,16 @@ claude mcp add --scope user --transport stdio computer-use-local -- npx -y compu
 - **Retina 显示器支持**：正确处理高分辨率显示器的坐标转换
 - **跨平台应用激活**：在 macOS/Linux/Windows 上可靠地切换应用程序
 
-详细的坐标系统说明请参见 [COORDINATES.md](./COORDINATES.md)。
+详细的坐标系统说明请参见 [COORDINATES.md](./docs/COORDINATES.md)。
+
+## 文档
+
+详细文档请查看 [docs](./docs) 目录：
+
+- **[使用示例](./docs/USAGE_EXAMPLES.md)** - 12 个实用示例
+- **[坐标系统](./docs/COORDINATES.md)** - 坐标转换详解
+- **[优化计划](./docs/OPTIMIZATION_PLAN.md)** - 开发路线图
+- **[Phase 4 实施](./docs/PHASE4_IMPLEMENTATION.md)** - 新功能详情
 
 ## 贡献
 
